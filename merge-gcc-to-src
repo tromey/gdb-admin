@@ -1,0 +1,121 @@
+#!/usr/bin/perl
+
+use File::Basename;
+
+$here = dirname (__FILE__);
+
+do $here . '/config.pl' || die "can't read config.pl\n";
+
+die "config.pl did not define SYNC\n" if !defined ($SYNC);
+
+$GCC = $SYNC . '/gcc';
+$SRC = $SYNC . '/binutils-gdb';
+$BRANCH = 'origin/master';
+$OUTPUTS = $SYNC . '/Outputs';
+
+mkdir $OUTPUTS if ! -d $OUTPUTS;
+
+# Top-level files we watch.
+@files = ("Makefile.tpl", "Makefile.def", "Makefile.in",
+	  "configure.ac", "configure", "config", "install-sh",
+	  "missing", "depcomp", "config.guess", "config.sub",
+	  "compile", "ylwrap", "config.rpath", "ltgcc.m4",
+	  "ltmain.sh", "ltoptions.m4", "ltsugar.m4", "ltversion.m4",
+	  "lt~obsolete.m4");
+$t = join ('|', map (quotemeta, @files));
+$files_rx = qr,^($t)$,;
+
+# Directories we clone.
+$dir_rx = qr,^(libiberty|include|intl|libdecnumber)/,;
+
+################################################################
+
+sub get_next () {
+    my $filename = $OUTPUTS . '/next';
+    if (-e $filename) {
+	open (INP, "$result") || die "can't read 'next' file: $!\n";
+	$result = <INP>;
+	close (INP);
+	return $result + 0;
+    }
+    return 1;
+}
+
+sub write_next ($) {
+    my ($n) = @_;
+
+    # Bah.
+    my $filename = $OUTPUTS . '/next';
+    system ("echo $n > $filename") == 0 || die "couldn't write $filename\n";
+}
+
+sub got_one ($) {
+    my ($rev) = @_;
+
+    my $out = $OUTPUTS . '/' . sprintf ("%04d", $NEXT_PATCH);
+
+    system ("git format-patch -1 --stdout $rev > $out") == 0
+	|| die "couldn't show $rev\n";
+
+    ++$NEXT_PATCH;
+}
+
+################################################################
+
+print "Fetching from src...\n";
+system ("cd $SRC && git pull") == 0 || die "couldn't pull in binutils\n";
+
+chdir ($GCC) || die "couldn't cd: $!\n";
+
+if (defined $ARGV[0]) {
+    $base_rev = $ARGV[0];
+} else {
+    $base_rev = `git rev-parse $BRANCH`;
+}
+
+print "Fetching from gcc...\n";
+system ('git fetch') == 0 || die "can't fetch in gcc\n";
+
+$NEXT_PATCH = get_next ();
+$orig = $NEXT_PATCH;
+
+open (F, "git rev-list --reverse ${base_rev}..${BRANCH} |")
+    || die "couldn't open: $!\n";
+ OUTER: while (<F>) {
+     chomp;
+     my $rev = $_;
+
+     print "Examining $rev\n";
+
+     open (L, "git log -1 --pretty=format: --name-only $rev |")
+	 || die "can't find files for $rev\n";
+
+     while (<L>) {
+	 chomp;
+	 # Git prints one empty line.
+	 next if m,^$,;
+
+	 if (m,$files_rx,) {
+	     # Only existing files in include are updated.
+	     if (!m,^include/, || -e ($SRC . '/' . $_)) {
+		 print " ... using since: $_\n";
+		 got_one ($rev);
+		 last;
+	     }
+	 }
+
+	 if (m,$dir_rx,) {
+	     print " ... using since: $_\n";
+	     got_one ($rev);
+	     last;
+	 }
+     }
+
+     close (L);
+}
+
+close (F);
+
+if ($NEXT_PATCH != $orig) {
+    write_next ($NEXT_PATCH);
+}
