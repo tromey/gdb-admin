@@ -62,12 +62,12 @@ sub got_one ($) {
 
 ################################################################
 
-print "Fetching from src...\n";
+print "Pulling from src...\n";
 system ("cd $SRC && git pull") == 0 || die "couldn't pull in binutils\n";
 
 chdir ($GCC) || die "couldn't cd: $!\n";
 
-if (defined $ARGV[0]) {
+if (scalar (@ARGV) > 0) {
     $base_rev = $ARGV[0];
 } else {
     $base_rev = `git rev-parse $BRANCH`;
@@ -75,8 +75,8 @@ if (defined $ARGV[0]) {
 
 print "Starting with gcc revision $base_rev\n";
 
-print "Fetching from gcc...\n";
-system ('git fetch') == 0 || die "can't fetch in gcc\n";
+print "Pulling from gcc...\n";
+system ('git pull') == 0 || die "can't pull in gcc\n";
 
 $NEXT_PATCH = get_next ();
 $orig = $NEXT_PATCH;
