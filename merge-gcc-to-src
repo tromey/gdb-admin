@@ -67,7 +67,7 @@ system ("cd $SRC && git pull") == 0 || die "couldn't pull in binutils\n";
 
 chdir ($GCC) || die "couldn't cd: $!\n";
 
-if (scalar (@ARGV) > 0) {
+if ($#ARGV >= 0) {
     $base_rev = $ARGV[0];
 } else {
     $base_rev = `git rev-parse $BRANCH`;
